@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import time
 from typing import Optional, Tuple
 
 import torch
@@ -43,6 +44,13 @@ class SimOTAAssigner(BaseAssigner):
         self.iou_weight = iou_weight
         self.cls_weight = cls_weight
         self.iou_calculator = TASK_UTILS.build(iou_calculator)
+        self.assigner_info = dict(
+            dynamic_ks=list(),
+            assign_time=list(),
+            num_assigned_per_gt=list(),
+            iou_assigned=list(),
+            num_overlapped_preds_per_gt=list(),
+        )
 
     def assign(self,
                pred_instances: InstanceData,
@@ -127,9 +135,14 @@ class SimOTAAssigner(BaseAssigner):
             cls_cost * self.cls_weight + iou_cost * self.iou_weight +
             (~is_in_boxes_and_center) * INF)
 
-        matched_pred_ious, matched_gt_inds = \
+        start_time = time.time()
+        matched_pred_ious, matched_gt_inds, num_matched_preds_per_gt = \
             self.dynamic_k_matching(
                 cost_matrix, pairwise_ious, num_gt, valid_mask)
+        self.assigner_info['assign_time'].append(time.time() - start_time)
+        self.assigner_info['num_overlapped_preds_per_gt'].append((pairwise_ious.cpu() > 0).sum(0).tolist())
+        self.assigner_info['num_assigned_per_gt'].append(num_matched_preds_per_gt)
+        self.assigner_info['iou_assigned'].append(matched_pred_ious.cpu().tolist())
 
         # convert to AssignResult format
         assigned_gt_inds[valid_mask] = matched_gt_inds + 1
@@ -200,6 +213,7 @@ class SimOTAAssigner(BaseAssigner):
         topk_ious, _ = torch.topk(pairwise_ious, candidate_topk, dim=0)
         # calculate dynamic k for each gt
         dynamic_ks = torch.clamp(topk_ious.sum(0).int(), min=1)
+        self.assigner_info['dynamic_ks'].append(dynamic_ks.cpu().tolist())
         for gt_idx in range(num_gt):
             _, pos_idx = torch.topk(
                 cost[:, gt_idx], k=dynamic_ks[gt_idx], largest=False)
@@ -220,4 +234,14 @@ class SimOTAAssigner(BaseAssigner):
         matched_gt_inds = matching_matrix[fg_mask_inboxes, :].argmax(1)
         matched_pred_ious = (matching_matrix *
                              pairwise_ious).sum(1)[fg_mask_inboxes]
-        return matched_pred_ious, matched_gt_inds
+        num_matched_preds_per_gt = matching_matrix.sum(0).cpu().tolist()
+        return matched_pred_ious, matched_gt_inds, num_matched_preds_per_gt
+    
+    def clean_assigner_info(self):
+        self.assigner_info = dict(
+            dynamic_ks=list(),
+            assign_time=list(),
+            num_assigned_per_gt=list(),
+            iou_assigned=list(),
+            num_overlapped_preds_per_gt=list(),
+        )
