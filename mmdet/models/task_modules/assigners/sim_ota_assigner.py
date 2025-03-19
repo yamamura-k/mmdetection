@@ -121,8 +121,7 @@ class SimOTAAssigner(BaseAssigner):
                       pred_scores.shape[-1]).float().unsqueeze(0).repeat(
                           num_valid, 1, 1))
 
-        valid_pred_scores = valid_pred_scores.unsqueeze(1).repeat(1, num_gt, 1)
-        cost_matrix = self.compute_cost_matrix(valid_pred_scores, gt_onehot_label, iou_cost, is_in_boxes_and_center)
+        cost_matrix = self.compute_cost_matrix(num_gt, valid_pred_scores, gt_onehot_label, iou_cost, is_in_boxes_and_center)
 
         start_time = time.time()
         matched_pred_ious, matched_gt_inds, num_matched_preds_per_gt = \
@@ -192,8 +191,10 @@ class SimOTAAssigner(BaseAssigner):
         return is_in_gts_or_centers, is_in_boxes_and_centers
     
     def compute_cost_matrix(self, 
+                            num_gt: int,
                             valid_pred_scores :Tensor, gt_onehot_label: Tensor, 
                             iou_cost: Tensor, is_in_boxes_and_center: Tensor) -> Tensor:
+        valid_pred_scores = valid_pred_scores.unsqueeze(1).repeat(1, num_gt, 1)
         # disable AMP autocast and calculate BCE with FP32 to avoid overflow
         with torch.cuda.amp.autocast(enabled=False):
             cls_cost = (

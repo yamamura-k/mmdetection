@@ -17,13 +17,14 @@ EPS = 1.0e-7
 class OTAAssigner(SimOTAAssigner):
     
     def compute_cost_matrix(self, 
+                            num_gt: int,
                             valid_pred_scores :Tensor, gt_onehot_label: Tensor, 
                             iou_cost: Tensor, is_in_boxes_and_center: Tensor) -> Tensor:
         # disable AMP autocast and calculate BCE with FP32 to avoid overflow
         with torch.cuda.amp.autocast(enabled=False):
             cls_cost = (
                 F.binary_cross_entropy(
-                    valid_pred_scores.to(dtype=torch.float32),
+                    valid_pred_scores.unsqueeze(1).repeat(1, num_gt, 1).to(dtype=torch.float32),
                     gt_onehot_label,
                     reduction='none',
                 ).sum(-1).to(dtype=valid_pred_scores.dtype))
