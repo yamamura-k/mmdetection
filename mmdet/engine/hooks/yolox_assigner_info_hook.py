@@ -1,6 +1,9 @@
+import os
 import os.path as osp
+import time
 import json  # または import yaml
 from mmengine.hooks import Hook
+from mmengine.model import is_model_wrapper
 from mmdet.registry import HOOKS
 
 @HOOKS.register_module()
@@ -8,7 +11,7 @@ class YOLOXAssignerINFOHook(Hook):
 
     def __init__(self,
                  filename,
-                 interval=1,
+                 interval,
                  out_dir=None,):
         self.filename = filename
         self.interval = interval
@@ -34,12 +37,17 @@ class YOLOXAssignerINFOHook(Hook):
             self.dump_func(log_dict, f, indent=4)
 
 
-    def after_train_epoch(self, runner):
-        if not self.every_n_iters(runner, self.interval):
+    def after_train_epoch(self, runner, *args, **kwargs):
+        if not self.every_n_epochs(runner, self.interval):
             return
-
-        _assigner = runner.model.bbox_head.assigner
-        log_dict = _assigner.assign_info
+        model = runner.model
+        if is_model_wrapper(model):
+            model = model.module
+        if hasattr(model, 'detector'):
+            _assigner = model.detector.bbox_head.assigner
+        else:
+            _assigner = model.bbox_head.assigner
+        log_dict = _assigner.assigner_info
 
         filename = f'epoch_{runner.epoch:04d}{self.file_ext}'
         filepath = osp.join(self.log_dir, filename)
@@ -48,7 +56,8 @@ class YOLOXAssignerINFOHook(Hook):
             
 
     def before_run(self, runner):
-      if self.out_dir is None:
-          self.log_dir = runner.work_dir
-      else:
-          self.log_dir = self.out_dir
+        if self.out_dir is None:
+            self.log_dir = osp.join(runner.work_dir, str(time.time()))
+            os.makedirs(self.log_dir, exist_ok=True)
+        else:
+            self.log_dir = self.out_dir
