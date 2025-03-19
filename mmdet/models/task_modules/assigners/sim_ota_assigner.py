@@ -122,18 +122,7 @@ class SimOTAAssigner(BaseAssigner):
                           num_valid, 1, 1))
 
         valid_pred_scores = valid_pred_scores.unsqueeze(1).repeat(1, num_gt, 1)
-        # disable AMP autocast and calculate BCE with FP32 to avoid overflow
-        with torch.cuda.amp.autocast(enabled=False):
-            cls_cost = (
-                F.binary_cross_entropy(
-                    valid_pred_scores.to(dtype=torch.float32),
-                    gt_onehot_label,
-                    reduction='none',
-                ).sum(-1).to(dtype=valid_pred_scores.dtype))
-
-        cost_matrix = (
-            cls_cost * self.cls_weight + iou_cost * self.iou_weight +
-            (~is_in_boxes_and_center) * INF)
+        cost_matrix = self.compute_cost_matrix(valid_pred_scores, gt_onehot_label, iou_cost, is_in_boxes_and_center)
 
         start_time = time.time()
         matched_pred_ious, matched_gt_inds, num_matched_preds_per_gt = \
@@ -201,6 +190,24 @@ class SimOTAAssigner(BaseAssigner):
             is_in_gts[is_in_gts_or_centers, :]
             & is_in_cts[is_in_gts_or_centers, :])
         return is_in_gts_or_centers, is_in_boxes_and_centers
+    
+    def compute_cost_matrix(self, 
+                            valid_pred_scores :Tensor, gt_onehot_label: Tensor, 
+                            iou_cost: Tensor, is_in_boxes_and_center: Tensor) -> Tensor:
+        # disable AMP autocast and calculate BCE with FP32 to avoid overflow
+        with torch.cuda.amp.autocast(enabled=False):
+            cls_cost = (
+                F.binary_cross_entropy(
+                    valid_pred_scores.to(dtype=torch.float32),
+                    gt_onehot_label,
+                    reduction='none',
+                ).sum(-1).to(dtype=valid_pred_scores.dtype))
+
+        cost_matrix = (
+            cls_cost * self.cls_weight + iou_cost * self.iou_weight +
+            (~is_in_boxes_and_center) * INF)
+        
+        return cost_matrix
 
     def dynamic_k_matching(self, cost: Tensor, pairwise_ious: Tensor,
                            num_gt: int,
