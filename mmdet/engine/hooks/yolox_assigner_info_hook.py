@@ -49,7 +49,7 @@ class YOLOXAssignerINFOHook(Hook):
             _assigner = model.bbox_head.assigner
         log_dict = _assigner.assigner_info
 
-        filename = f'epoch_{runner.epoch:04d}{self.file_ext}'
+        filename = f'rank_{runner.rank}_epoch_{runner.epoch:04d}{self.file_ext}'
         filepath = osp.join(self.log_dir, filename)
         self._dump_log(log_dict, filepath)
         _assigner.clean_assigner_info()
@@ -57,7 +57,7 @@ class YOLOXAssignerINFOHook(Hook):
 
     def before_run(self, runner):
         if self.out_dir is None:
-            self.log_dir = osp.join(runner.work_dir, str(time.time()))
+            self.log_dir = osp.join(runner.log_dir, 'assigner_info')
             os.makedirs(self.log_dir, exist_ok=True)
         else:
             self.log_dir = self.out_dir
