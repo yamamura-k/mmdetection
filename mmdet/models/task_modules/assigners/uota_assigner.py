@@ -42,7 +42,6 @@ class UOTAAssigner(SimOTAAssigner):
         
         return cost_matrix
         
-        return cost_matrix
 
     def dynamic_k_matching(self, cost: Tensor, pairwise_ious: Tensor,
                            num_gt: int,
