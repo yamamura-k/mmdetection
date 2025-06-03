@@ -67,8 +67,8 @@ model = dict(
             loss_weight=1.0),
         loss_l1=dict(type='L1Loss', reduction='sum', loss_weight=1.0)),
     train_cfg=dict(
-        assigner=dict(type='UOTAAssigner', center_radius=2.5, adjustment_k=2),
-        assigner_latter=dict(type='OTAAssigner', center_radius=2.5)
+        assigner=dict(type='UOTAAssigner', center_radius=2.5, adjustment_k=2, k_estimator='dynamic_ks'),
+        assigner_latter=dict(type='OTAAssigner', center_radius=2.5, k_estimator='dynamic_ks')
     ),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
