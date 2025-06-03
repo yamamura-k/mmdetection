@@ -15,6 +15,11 @@ EPS = 1.0e-7
 
 @TASK_UTILS.register_module()
 class UOTAAssigner(SimOTAAssigner):
+    def __init__(self,
+                 adjustment_k: int = 0,
+                 *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.adjustment_k = adjustment_k
     
     def compute_cost_matrix(self, 
                             num_gt: int,
@@ -60,8 +65,8 @@ class UOTAAssigner(SimOTAAssigner):
         n_pred, n_gt = cost.shape
         nu = pairwise_ious_cpu.new_ones(n_pred).int()
         mu = pairwise_ious_cpu.new_ones(n_gt).int() # n_gt = num_gt + 1
-        # mu[:-1] = (dynamic_ks - 2).clamp(min=1)
-        mu[:-1] = dynamic_ks
+        mu[:-1] = (dynamic_ks - self.adjustment_k).clamp(min=1)
+        # mu[:-1] = dynamic_ks
         mu[-1] = n_pred
         matching_matrix = torch.from_numpy(
             te.solve_qubo_with_lemon_prune(n_pred, n_gt, nu.numpy(), mu.numpy(), cost.cpu().numpy().ravel(), pairwise_ious_cpu.numpy().ravel())

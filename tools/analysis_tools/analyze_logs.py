@@ -74,19 +74,35 @@ def plot_curve(log_dicts, args):
                     if log_dict[epoch][metric]:
                         xs += [epoch]
                 plt.xlabel('epoch')
-                plt.plot(xs, ys, label=legend[i * num_metrics + j], marker='o')
+                # plt.plot(xs, ys, label=legend[i * num_metrics + j], marker='o')
+                plt.plot(xs, ys, label=legend[i * num_metrics + j])
             else:
                 xs = []
-                ys = []
+                # ys = []
+                # for epoch in epochs:
+                #     iters = log_dict[epoch]['step']
+                #     xs.append(np.array(iters))
+                #     ys.append(np.array(log_dict[epoch][metric][:len(iters)]))
+                # xs = np.concatenate(xs)
+                # ys = np.concatenate(ys)
+                # plt.xlabel('iter')
+                # plt.plot(
+                #     xs, ys, label=legend[i * num_metrics + j], linewidth=0.5)
+                y_mean = []
+                y_std = []
                 for epoch in epochs:
                     iters = log_dict[epoch]['step']
-                    xs.append(np.array(iters))
-                    ys.append(np.array(log_dict[epoch][metric][:len(iters)]))
-                xs = np.concatenate(xs)
-                ys = np.concatenate(ys)
-                plt.xlabel('iter')
+                    xs.append(epoch)
+                    y_array = np.array(log_dict[epoch][metric][:len(iters)])
+                    y_mean.append(y_array.mean())
+                    y_std.append(y_array.std())
+                xs = np.asarray(xs)
+                y_mean = np.asarray(y_mean)
+                y_std = np.asarray(y_std)
+                plt.xlabel('epoch')
                 plt.plot(
-                    xs, ys, label=legend[i * num_metrics + j], linewidth=0.5)
+                    xs, y_mean, label=legend[i * num_metrics + j], linewidth=0.5)
+                plt.fill_between(xs, y_mean - y_std, y_mean + y_std, alpha=0.3)
             plt.legend()
         if args.title is not None:
             plt.title(args.title)
@@ -94,7 +110,7 @@ def plot_curve(log_dicts, args):
         plt.show()
     else:
         print(f'save curve to: {args.out}')
-        plt.savefig(args.out)
+        plt.savefig(args.out, dpi=300)
         plt.cla()
 
 

@@ -66,7 +66,10 @@ model = dict(
             reduction='sum',
             loss_weight=1.0),
         loss_l1=dict(type='L1Loss', reduction='sum', loss_weight=1.0)),
-    train_cfg=dict(assigner=dict(type='UOTAAssigner', center_radius=2.5, adjustment_k=2)),
+    train_cfg=dict(
+        assigner=dict(type='UOTAAssigner', center_radius=2.5, adjustment_k=2),
+        assigner_latter=dict(type='OTAAssigner', center_radius=2.5)
+    ),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
@@ -182,6 +185,7 @@ test_evaluator = val_evaluator
 # training settings
 max_epochs = 300
 num_last_epochs = 15
+num_warmup_epochs = 100
 interval = 1
 ckpt_interval = 10
 
@@ -237,6 +241,10 @@ custom_hooks = [
     dict(
         type='YOLOXModeSwitchHook',
         num_last_epochs=num_last_epochs,
+        priority=48),
+    dict(
+        type='YOLOXAssignerSwitchHook',
+        num_warmup_epochs=num_warmup_epochs,
         priority=48),
     dict(type='SyncNormHook', priority=48),
     dict(

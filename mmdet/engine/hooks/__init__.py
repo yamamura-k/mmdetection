@@ -11,6 +11,7 @@ from .visualization_hook import (DetVisualizationHook,
                                  GroundingVisualizationHook,
                                  TrackVisualizationHook)
 from .yolox_mode_switch_hook import YOLOXModeSwitchHook
+from .yolox_assigner_switch_hook import YOLOXAssignerSwitchHook
 from .yolox_assigner_info_hook import YOLOXAssignerINFOHook
 
 __all__ = [

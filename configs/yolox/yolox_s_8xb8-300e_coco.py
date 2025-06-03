@@ -4,6 +4,8 @@ _base_ = [
 ]
 
 img_scale = (640, 640)  # width, height
+# resume=True
+# load_from='work_dirs/yolox_s_8xb8-300e_coco/epoch_80.pth'
 
 # model settings
 model = dict(
