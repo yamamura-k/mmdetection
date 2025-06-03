@@ -48,11 +48,7 @@ class OTAAssigner(SimOTAAssigner):
         """Use IoU and matching cost to calculate the dynamic top-k positive
         targets."""
         matching_matrix = torch.zeros_like(cost, dtype=torch.uint8)
-        # select candidate topk ious for dynamic-k calculation
-        candidate_topk = min(self.candidate_topk, pairwise_ious.size(0))
-        topk_ious, _ = torch.topk(pairwise_ious, candidate_topk, dim=0)
-        # calculate dynamic k for each gt
-        dynamic_ks = torch.clamp(topk_ious.sum(0).int(), min=1)
+        dynamic_ks = self.k_estimator(pairwise_ious, self.candidate_topk)
         self.assigner_info['dynamic_ks'].append(dynamic_ks.cpu().tolist())
 
         mu = pairwise_ious.new_ones(num_gt + 1)
@@ -61,7 +57,7 @@ class OTAAssigner(SimOTAAssigner):
         nu = pairwise_ious.new_ones(cost.shape[0])
         matching_matrix = ot.emd(nu, mu, cost, EPS)
         matching_matrix = matching_matrix[:, :-1]
-        del topk_ious, dynamic_ks
+        del dynamic_ks
 
         # get foreground mask inside box and center prior
         fg_mask_inboxes = matching_matrix.sum(1) > 0

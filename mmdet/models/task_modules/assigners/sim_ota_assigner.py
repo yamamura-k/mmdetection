@@ -15,6 +15,15 @@ from .base_assigner import BaseAssigner
 INF = 100000.0
 EPS = 1.0e-7
 
+def dynamic_k_estimation(pairwise_ious, candidate_topk):
+    candidate_topk = min(candidate_topk, pairwise_ious.size(0))
+    topk_ious, _ = torch.topk(pairwise_ious, candidate_topk, dim=0)
+    # calculate dynamic k for each gt
+    dynamic_ks = torch.clamp(topk_ious.sum(0).int(), min=1)
+    return dynamic_ks
+K_ESTIMATOR=dict(
+    dynamic_ks=dynamic_k_estimation,
+)
 
 @TASK_UTILS.register_module()
 class SimOTAAssigner(BaseAssigner):
@@ -38,12 +47,14 @@ class SimOTAAssigner(BaseAssigner):
                  candidate_topk: int = 10,
                  iou_weight: float = 3.0,
                  cls_weight: float = 1.0,
-                 iou_calculator: ConfigType = dict(type='BboxOverlaps2D')):
+                 iou_calculator: ConfigType = dict(type='BboxOverlaps2D'),
+                 k_estimator: str = 'dynamic_ks'):
         self.center_radius = center_radius
         self.candidate_topk = candidate_topk
         self.iou_weight = iou_weight
         self.cls_weight = cls_weight
         self.iou_calculator = TASK_UTILS.build(iou_calculator)
+        self.k_estimator = K_ESTIMATOR[k_estimator]
         self.assigner_info = dict(
             dynamic_ks=list(),
             assign_time=list(),
@@ -217,10 +228,11 @@ class SimOTAAssigner(BaseAssigner):
         targets."""
         matching_matrix = torch.zeros_like(cost, dtype=torch.uint8)
         # select candidate topk ious for dynamic-k calculation
-        candidate_topk = min(self.candidate_topk, pairwise_ious.size(0))
-        topk_ious, _ = torch.topk(pairwise_ious, candidate_topk, dim=0)
-        # calculate dynamic k for each gt
-        dynamic_ks = torch.clamp(topk_ious.sum(0).int(), min=1)
+        # candidate_topk = min(self.candidate_topk, pairwise_ious.size(0))
+        # topk_ious, _ = torch.topk(pairwise_ious, candidate_topk, dim=0)
+        # # calculate dynamic k for each gt
+        # dynamic_ks = torch.clamp(topk_ious.sum(0).int(), min=1)
+        dynamic_ks = self.k_estimator(pairwise_ious, self.candidate_topk)
         self.assigner_info['dynamic_ks'].append(dynamic_ks.cpu().tolist())
         for gt_idx in range(num_gt):
             _, pos_idx = torch.topk(

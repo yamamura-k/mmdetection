@@ -55,11 +55,7 @@ class UOTAAssigner(SimOTAAssigner):
         targets."""
         pairwise_ious_cpu = pairwise_ious.detach().cpu()
         matching_matrix = torch.zeros_like(cost, dtype=torch.uint8)
-        # select candidate topk ious for dynamic-k calculation
-        candidate_topk = min(self.candidate_topk, pairwise_ious.size(0))
-        topk_ious, _ = torch.topk(pairwise_ious_cpu, candidate_topk, dim=0)
-        # calculate dynamic k for each gt
-        dynamic_ks = torch.clamp(topk_ious.sum(0).int(), min=1)
+        dynamic_ks = self.k_estimator(pairwise_ious_cpu, self.candidate_topk)
         self.assigner_info['dynamic_ks'].append(dynamic_ks.cpu().tolist())
 
         n_pred, n_gt = cost.shape
@@ -72,7 +68,7 @@ class UOTAAssigner(SimOTAAssigner):
             te.solve_qubo_with_lemon_prune(n_pred, n_gt, nu.numpy(), mu.numpy(), cost.cpu().numpy().ravel(), pairwise_ious_cpu.numpy().ravel())
         ).to(valid_mask.device)
         matching_matrix = matching_matrix[:, :-1]
-        del topk_ious, dynamic_ks
+        del dynamic_ks
 
         # get foreground mask inside box and center prior
         fg_mask_inboxes = matching_matrix.sum(1) > 0
