@@ -44,11 +44,12 @@ class OTAAssigner(SimOTAAssigner):
 
     def dynamic_k_matching(self, cost: Tensor, pairwise_ious: Tensor,
                            num_gt: int,
-                           valid_mask: Tensor) -> Tuple[Tensor, Tensor]:
+                           valid_mask: Tensor,
+                           pairwise_ious_gt: Tensor) -> Tuple[Tensor, Tensor]:
         """Use IoU and matching cost to calculate the dynamic top-k positive
         targets."""
         matching_matrix = torch.zeros_like(cost, dtype=torch.uint8)
-        dynamic_ks = self.k_estimator(pairwise_ious, self.candidate_topk)
+        dynamic_ks = self.k_estimator(pairwise_ious, pairwise_ious_gt, self.candidate_topk)
         self.assigner_info['dynamic_ks'].append(dynamic_ks.cpu().tolist())
 
         mu = pairwise_ious.new_ones(num_gt + 1)

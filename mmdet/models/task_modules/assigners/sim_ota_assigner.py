@@ -15,14 +15,23 @@ from .base_assigner import BaseAssigner
 INF = 100000.0
 EPS = 1.0e-7
 
-def dynamic_k_estimation(pairwise_ious, candidate_topk):
+def dynamic_k_estimation(pairwise_ious, pairwise_ious_gt, candidate_topk):
     candidate_topk = min(candidate_topk, pairwise_ious.size(0))
     topk_ious, _ = torch.topk(pairwise_ious, candidate_topk, dim=0)
     # calculate dynamic k for each gt
     dynamic_ks = torch.clamp(topk_ious.sum(0).int(), min=1)
     return dynamic_ks
+
+def density_aware_k_estimation(pairwise_ious, pairwise_ious_gt, candidate_topk):
+    candidate_topk = min(candidate_topk, pairwise_ious.size(0))
+    topk_ious, _ = torch.topk(pairwise_ious, candidate_topk, dim=0)
+    # calculate dynamic k for each gt
+    dynamic_ks = torch.clamp(topk_ious.sum(0).int() - pairwise_ious_gt.sum(0).int(), min=1)
+    return dynamic_ks
+
 K_ESTIMATOR=dict(
     dynamic_ks=dynamic_k_estimation,
+    density_ks=density_aware_k_estimation,
 )
 
 @TASK_UTILS.register_module()
@@ -48,13 +57,15 @@ class SimOTAAssigner(BaseAssigner):
                  iou_weight: float = 3.0,
                  cls_weight: float = 1.0,
                  iou_calculator: ConfigType = dict(type='BboxOverlaps2D'),
-                 k_estimator: str = 'dynamic_ks'):
+                 k_estimator: str = 'dynamic_ks',
+                 iou_mode: str = 'iou',):
         self.center_radius = center_radius
         self.candidate_topk = candidate_topk
         self.iou_weight = iou_weight
         self.cls_weight = cls_weight
         self.iou_calculator = TASK_UTILS.build(iou_calculator)
         self.k_estimator = K_ESTIMATOR[k_estimator]
+        self.iou_mode = iou_mode
         self.assigner_info = dict(
             dynamic_ks=list(),
             assign_time=list(),
@@ -124,7 +135,8 @@ class SimOTAAssigner(BaseAssigner):
             return AssignResult(
                 num_gt, assigned_gt_inds, max_overlaps, labels=assigned_labels)
 
-        pairwise_ious = self.iou_calculator(valid_decoded_bbox, gt_bboxes)
+        pairwise_ious = self.iou_calculator(valid_decoded_bbox, gt_bboxes, mode=self.iou_mode)
+        pairwise_ious_gt = self.iou_calculator(gt_bboxes, gt_bboxes, mode=self.iou_mode)
         iou_cost = -torch.log(pairwise_ious + EPS)
 
         gt_onehot_label = (
@@ -137,7 +149,7 @@ class SimOTAAssigner(BaseAssigner):
         start_time = time.time()
         matched_pred_ious, matched_gt_inds, num_matched_preds_per_gt = \
             self.dynamic_k_matching(
-                cost_matrix, pairwise_ious, num_gt, valid_mask)
+                cost_matrix, pairwise_ious, num_gt, valid_mask, pairwise_ious_gt)
         self.assigner_info['assign_time'].append(time.time() - start_time)
         self.assigner_info['num_overlapped_preds_per_gt'].append((pairwise_ious.cpu() > 0).sum(0).tolist())
         self.assigner_info['num_assigned_per_gt'].append(num_matched_preds_per_gt)
@@ -223,7 +235,8 @@ class SimOTAAssigner(BaseAssigner):
 
     def dynamic_k_matching(self, cost: Tensor, pairwise_ious: Tensor,
                            num_gt: int,
-                           valid_mask: Tensor) -> Tuple[Tensor, Tensor]:
+                           valid_mask: Tensor,
+                           pairwise_ious_gt: Tensor) -> Tuple[Tensor, Tensor]:
         """Use IoU and matching cost to calculate the dynamic top-k positive
         targets."""
         matching_matrix = torch.zeros_like(cost, dtype=torch.uint8)
@@ -232,14 +245,14 @@ class SimOTAAssigner(BaseAssigner):
         # topk_ious, _ = torch.topk(pairwise_ious, candidate_topk, dim=0)
         # # calculate dynamic k for each gt
         # dynamic_ks = torch.clamp(topk_ious.sum(0).int(), min=1)
-        dynamic_ks = self.k_estimator(pairwise_ious, self.candidate_topk)
+        dynamic_ks = self.k_estimator(pairwise_ious, pairwise_ious_gt, self.candidate_topk)
         self.assigner_info['dynamic_ks'].append(dynamic_ks.cpu().tolist())
         for gt_idx in range(num_gt):
             _, pos_idx = torch.topk(
                 cost[:, gt_idx], k=dynamic_ks[gt_idx], largest=False)
             matching_matrix[:, gt_idx][pos_idx] = 1
 
-        del topk_ious, dynamic_ks, pos_idx
+        del dynamic_ks, pos_idx
 
         prior_match_gt_mask = matching_matrix.sum(1) > 1
         if prior_match_gt_mask.sum() > 0:
